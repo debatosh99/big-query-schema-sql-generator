@@ -1,5 +1,8 @@
 import json
 import copy
+import os
+from google.cloud import bigquery
+
 
 def load_json(file_path):
     """Loads a json file into a python object(list/dict)"""
@@ -90,6 +93,27 @@ def generate_encrypt_sql(sqlstatement : str, encrypt_cols : list, full_func_name
     return sql_statement_str
 
 
+def get_table_schema(project_id, dataset_name, table_name):
+    table_id = f"{project_id}.{dataset_name}.{table_name}"
+    client = bigquery.Client()
+    table = client.get_table(table_id)
+    schema = table.schema
+    return schema
+
+def _convert_field(field):
+    field_dict = {
+        "name": field.name,
+        "type": field.field_type,
+        "mode": field.mode
+    }
+    if field.fields:
+        field_dict["fields"] = [_convert_field(f) for f in field.fields]
+    return field_dict
+
+def bq_schema_to_json(project_id, dataset_name, table_name):
+    bq_schema = get_table_schema(project_id, dataset_name, table_name)
+    schema_json = [_convert_field(field) for field in bq_schema]
+    return schema_json
 
 
 # Specify the project ID, dataset name, and table name
@@ -102,6 +126,8 @@ encrypt_cols = ["personalInfo.bankDetails.account.accountNo", "department"]
 # Construct a fully qualified table name
 table_id = f"{project_id}.{dataset_name}.{table_name}"
 final_sql_list = []
+# bq_schema_list = bq_schema_to_json(project_id, dataset_name, table_name)
+# print(json.dumps(bq_schema_list, indent=4))
 bq_schema_list = load_json("bq-schema5.json")
 parse_bq_schema(bq_schema_list)
 print(final_sql_list)
