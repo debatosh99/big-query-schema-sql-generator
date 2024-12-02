@@ -1,0 +1,51 @@
+[
+    {
+        "name": "rollNo",
+        "type": "INTEGER",
+        "mode": "NULLABLE"
+    },
+    {
+        "name": "personalInfo",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+            {
+                "name": "first_name",
+                "type": "STRING",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "last_name",
+                "type": "STRING",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "age",
+                "type": "INTEGER",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "bankDetails",
+                "type": "RECORD",
+                "mode": "NULLABLE",
+                "fields": [
+                    {
+                        "name": "balance",
+                        "type": "NUMERIC",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "accountNo",
+                        "type": "INTEGER",
+                        "mode": "NULLABLE"
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "name": "department",
+        "type": "STRING",
+        "mode": "NULLABLE"
+    }
+]
