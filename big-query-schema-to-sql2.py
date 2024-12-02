@@ -82,12 +82,33 @@ def generate_sql_query(columns):
 
 
 
+def generate_encrypt_sql(sqlstatement : str, encrypt_cols : list, full_func_name : str) -> str:
+    sql_statement_str = sqlstatement
+    for col in encrypt_cols:
+        encrypt_func = f"{full_func_name}(CAST({col} AS STRING))"
+        sql_statement_str = sql_statement_str.replace(col, encrypt_func)
+    return sql_statement_str
+
+
+
+
+# Specify the project ID, dataset name, and table name
+project_id = "playground-s-11-42147a98"
+dataset_name = "test_dataset"
+table_name = "student_records"
+func_name = "strcon"
+full_func_name = f"{dataset_name}.{func_name}"
+encrypt_cols = ["personalInfo.bankDetails.account.accountNo", "department"]
+# Construct a fully qualified table name
+table_id = f"{project_id}.{dataset_name}.{table_name}"
 final_sql_list = []
 bq_schema_list = load_json("bq-schema5.json")
 parse_bq_schema(bq_schema_list)
 print(final_sql_list)
 sql_query = generate_sql_query(final_sql_list)
 print(sql_query)
+encrypted_sql_query = generate_encrypt_sql(sql_query, encrypt_cols, full_func_name)
+print(encrypted_sql_query)
 
 
 
