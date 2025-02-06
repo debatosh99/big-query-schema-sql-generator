@@ -1,0 +1,50 @@
+import pyarrow.parquet as pq
+import json
+
+def parquet_schema_to_avro_like(parquet_file_path):
+    # Load the Parquet file
+    parquet_file = pq.ParquetFile(parquet_file_path)
+    
+    # Extract the Arrow schema
+    arrow_schema = parquet_file.schema
+    
+    # Convert Arrow schema to Avro-like schema
+    avro_like_schema = {
+        "type": "record",
+        "name": "ParquetSchema",
+        "fields": []
+    }
+    
+    for field in arrow_schema:
+        field_type = str(field.type)
+        # Map Arrow types to Avro types
+        if field_type == "int64":
+            avro_type = "long"
+        elif field_type == "int32":
+            avro_type = "int"
+        elif field_type == "string":
+            avro_type = "string"
+        elif field_type == "double":
+            avro_type = "double"
+        elif field_type == "bool":
+            avro_type = "boolean"
+        elif field_type.startswith("timestamp"):
+            avro_type = {"type": "long", "logicalType": "timestamp-millis"}
+        elif field_type.startswith("date"):
+            avro_type = {"type": "int", "logicalType": "date"}
+        else:
+            avro_type = field_type  # Fallback for unsupported types
+        
+        avro_like_schema["fields"].append({
+            "name": field.name,
+            "type": avro_type
+        })
+    
+    return avro_like_schema
+
+# Example usage
+parquet_file_path = "path/to/your/file.parquet"
+avro_like_schema = parquet_schema_to_avro_like(parquet_file_path)
+
+# Print the Avro-like schema
+print(json.dumps(avro_like_schema, indent=2))
