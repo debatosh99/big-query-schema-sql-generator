@@ -1,0 +1,4 @@
+logName="projects/YOUR_PROJECT_ID/logs/cloudaudit.googleapis.com%2Fdata_access"
+resource.type="bigquery_resource"
+jsonPayload.methodName="google.cloud.bigquery.v2.JobService.InsertJob"
+jsonPayload.metadata.jobChange.job.jobConfig.queryConfig.destinationTable.tableId="my-table"
