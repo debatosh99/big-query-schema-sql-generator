@@ -1,3 +1,4 @@
+
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from airflow.utils.dates import days_ago
@@ -60,4 +61,17 @@ def execute_psql_query():
         )
         print("Query Output:")
         print(result.stdout)
-    except subprocess.Called
+    except subprocess.CalledProcessError as e:
+        print("Error executing query:")
+        print(e.stderr)
+        raise
+
+# Define the task
+run_psql_query = PythonOperator(
+    task_id='run_psql_query',
+    python_callable=execute_psql_query,
+    dag=dag,
+)
+
+# Set the task in the DAG
+run_psql_query
