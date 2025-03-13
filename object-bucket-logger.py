@@ -3,6 +3,7 @@ from google.cloud import logging
 import json
 from datetime import datetime
 
+#pip install google-cloud-storage google-cloud-logging
 def get_bucket_activity(bucket_name, project_id):
     """
     Retrieves write/read activity for a GCS bucket, including user and timestamp.
