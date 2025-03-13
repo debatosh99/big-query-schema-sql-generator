@@ -3,6 +3,7 @@ from google.cloud import logging
 from sqlalchemy import create_engine
 from datetime import datetime, timedelta
 
+#pip install google-cloud-logging sqlalchemy psycopg2-binary pandas
 # Google Cloud project and bucket details
 project_id = 'your-project-id'
 bucket_name = 'your-bucket-name'
