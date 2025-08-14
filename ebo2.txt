@@ -1,0 +1,27 @@
+let's enhance the Python exponential backoff example so that it will also respect an API’s Retry-After header when present (common for rate-limited APIs like Atlassian, OpenAI, GitHub, etc.).
+
+This makes the retry smarter — instead of always doubling the wait time, if the server tells us exactly how many seconds to wait, we follow that
+
+Changes from the previous version
+Looks for the Retry-After header:
+
+If found, uses that exact server-specified wait time.
+
+If it’s invalid or missing, falls back to exponential wait time.
+
+Still supports transient network errors with backoff.
+
+Immediate exit on success so you don’t waste retries.
+
+Works with APIs like Atlassian & OpenAI that send Retry-After in seconds.
+
+Example Scenario:
+API returns 429 Too Many Requests and header: Retry-After: 10 → waits exactly 10 seconds, then retries.
+
+API returns 503 Service Unavailable without header → waits exponential time (1s → 2s → 4s...).
+
+API returns 400 → stops immediately (non-retryable).
+
+If you want, I can also make a FastAPI middleware version of this, so all API calls from your AI agent follow this retry+backoff+Retry-After logic automatically.
+
+Do you want me to prepare that next? That would integrate nicely with your React + FastAPI AI chat project.

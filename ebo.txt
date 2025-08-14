@@ -1,0 +1,48 @@
+You should implement exponential backoff for API calls when you receive HTTP response codes that indicate transient errors or rate limiting, where a retry might succeed after a short delay. The most common and recommended status codes for exponential backoff are:
+
+HTTP 5xx (500–599): Server errors, which are usually temporary (e.g., 500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable, and 504 Gateway Timeout).
+
+HTTP 429: Too Many Requests (rate limiting), indicating the server is overloaded or you are exceeding a usage quota.
+
+These codes are good candidates for retrying with exponential backoff because the error is usually not permanent, and aggressive immediate retries could further worsen the situation.
+
+Summary Table:
+
+Status Code Range	Description	   Should Retry With Backoff?
+500–599	           Server errors	    Yes
+429	               Too Many Requests	Yes
+400–499(except 429)	Client errors	    No (usually not recoverable)
+For other 4xx errors (except 429), such as 400 (Bad Request) or 401 (Unauthorized), exponential backoff is not recommended because these typically indicate a permanent issue with the request, not a transient problem.
+
+So, to summarize:
+
+Retry with exponential backoff on HTTP 5xx and 429.
+
+Do NOT apply backoff to most other 4xx or 2xx codes.
+
+
+##########################################################################
+How it works:
+Exponential Delay:
+wait_time = backoff_factor * (2 ** attempt) gives delays like:
+1s → 2s → 4s → 8s...
+
+Retry Conditions:
+
+Will retry if status code is 429 (rate limiting)
+
+Will retry if status code is in 500–599 range
+
+Will retry if network/connection errors occur
+
+Will stop immediately on status 200
+
+Immediate Success Exit:
+As soon as a successful 200 OK arrives, no further retries are attempted — it prints the JSON and returns.
+
+Test Endpoint:
+Using jsonplaceholder.typicode.com as a mock API, but replace with your own endpoint.
+
+If you want, I can extend this example to also respect Retry-After headers for APIs like Atlassian or OpenAI — that would make it a production-grade backoff strategy.
+
+Do you want me to add that? That’s common for smart backoff handling.
