@@ -19,54 +19,52 @@ def call_api_with_backoff(url, max_retries=5, backoff_factor=1):
         try:
             print(f"Attempt {attempt + 1}/{max_retries}...")
 
-            # Example GET request
             response = requests.get(url, timeout=10)
 
             # ✅ Success
             if response.status_code == 200:
                 print("✅ Successful response received!")
-                return response.json()
+                # return response.json()
+                return response
 
-            # ⚠️ Retryable conditions: 429 or 5xx
+            # ⚠ Retryable conditions
             elif response.status_code == 429 or (500 <= response.status_code < 600):
-                # Check for Retry-After header
                 retry_after = response.headers.get("Retry-After")
                 if retry_after:
                     try:
                         wait_time = int(retry_after)
-                        print(f"⚠️ Server requested wait of {wait_time} seconds (Retry-After header).")
+                        print(f"⚠ Server requested wait of {wait_time} seconds.")
                     except ValueError:
-                        # In case of malformed header — fallback to exponential
                         wait_time = backoff_factor * (2 ** attempt)
-                        print(f"⚠️ Malformed Retry-After header; using {wait_time} seconds instead.")
+                        print(f"⚠ Malformed Retry-After header; using {wait_time} seconds.")
                 else:
-                    # Standard exponential backoff
                     wait_time = backoff_factor * (2 ** attempt)
-                    print(f"⚠️ No Retry-After header. Waiting {wait_time} seconds before retry.")
+                    print(f"⚠ No Retry-After header. Waiting {wait_time} seconds before retry.")
 
                 time.sleep(wait_time)
+                continue  # Go to the next retry attempt
 
-            # ❌ Non-retryable error
+            # ❌ Non-retryable
             else:
                 print(f"❌ Non-retryable HTTP error: {response.status_code}")
-                break
+                return None
 
         except requests.exceptions.RequestException as e:
-            # Retry network-related errors with exponential backoff
             wait_time = backoff_factor * (2 ** attempt)
-            print(f"⚠️ Request failed ({e}), retrying in {wait_time} seconds...")
+            print(f"⚠ Request failed ({e}), retrying in {wait_time} seconds...")
             time.sleep(wait_time)
 
-    print("❌ Max retries reached, exiting.")
+    print("❌ Max retries reached, returning None.")
     return None
 
 
 # ----------------------- USAGE EXAMPLE -----------------------
 if __name__ == "__main__":
-    # This uses a test API for demo, replace with your real endpoint
     API_URL = "https://jsonplaceholder.typicode.com/posts/1"
 
-    result = call_api_with_backoff(API_URL)
+    api_result = call_api_with_backoff(API_URL)
 
-    if result:
-        print("📄 Response JSON:", result)
+    if api_result:
+        print("📄 Final JSON from function:", api_result)
+    else:
+        print("❌ API call failed after retries.")
