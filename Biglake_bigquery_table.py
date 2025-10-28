@@ -1,3 +1,19 @@
+
+
+"""
+Creating a BigLake table over existing data in a Cloud Storage bucket using Python involves using the BigQuery Python client library to build and execute a CREATE EXTERNAL TABLE DDL statement. This process requires a pre-existing Cloud Resource connection that BigQuery can use for delegated access to your GCS data. 
+Prerequisites
+A Google Cloud project with the BigQuery API and BigQuery Connection API enabled.
+A Cloud Storage bucket containing your data (e.g., in Parquet, Avro, or ORC format).
+A BigQuery Cloud Resource connection configured to access your GCS bucket. The connection ID is required for the code. You can find the connection ID in the BigQuery Studio under "Add data" > "Connections to external data sources".
+The service account associated with your Cloud Resource connection must have the Storage Object Viewer IAM role on the GCS bucket.
+The BigQuery Python client library installed (pip install google-cloud-bigquery). 
+"""
+
+
+
+
+
 from google.cloud import bigquery
 
 # ----- Configuration (replace with your values) -----
