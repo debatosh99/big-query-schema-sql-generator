@@ -143,3 +143,41 @@ spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
 
 # Query in Bigquery
 select * from `trim-strength-477307-h0.customer.customer_details_iceberg_bq_managed`;
+
+
+##########################################################################################
+ICEBERG REST CATALOG WITHOUT USING DEFAULT REST CATALOG BUCKET  (WORKS)
+##########################################################################################
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_without_default_cat_dir.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+LOCATION="us-central1"
+RUNTIME_VERSION="2.2"
+CATALOG_NAME="learnbiglakeiceberg7"
+WAREHOUSE_DIRECTORY="gs://learnbiglakeiceberg7"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.defaultCatalog=${CATALOG_NAME},\
+spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_DIRECTORY},\
+spark.sql.catalog.${CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+
+Note: In this type of setup you always do need to specify the location of the namespace which should be always inside your catalog gcs directory
+spark.sql("CREATE NAMESPACE IF NOT EXISTS iceberg_rest_cat_no_default_cat LOCATION 'gs://learnbiglakeiceberg7/mynamespace7'")
+
+select * from `trim-strength-477307-h0.learnbiglakeiceberg7.iceberg_rest_cat_no_default_cat.person`;
+
+#########################################################################################
