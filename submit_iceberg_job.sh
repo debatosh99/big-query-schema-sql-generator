@@ -676,5 +676,321 @@ Note: only gave roles/storage.objectUser to delegate service account: blirc-9048
       no extra role given to dataproc service agent etc
 
 
+###############################################################################################
+ICEBERG CUSTOM CATALOG (Spark managed iceberg) - To be migrated to rest catalog
+###############################################################################################
+gcloud config set account nitipradhan17@gmail.com
+gcloud auth login
+gcloud config set auth/impersonate_service_account deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+
+service account was given:
+bigquery job user
+bigquery data editor role on the bigquery dataset: iceberg_custom_catalog_namespace15
+also BigLake Editor (Beta) and Dataproc Worker
+also storage object user on bucket gs://learnbiglakeiceberg15
+
+The user writing object in the bucket: principalEmail: "deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+firstpartyprincipal: "service-90486491937@compute-system.iam.gserviceaccount.com"
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_custom_catalog_spark_managed_migate_to_rest_catalog.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+LOCATION="us-central1"
+RUNTIME_VERSION="2.2"
+CATALOG_NAME="learnbiglakeiceberg15"
+WAREHOUSE_DIRECTORY="gs://learnbiglakeiceberg15/warehouse"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --version=${RUNTIME_VERSION} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+    spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+    spark.sql.catalog.${CATALOG_NAME}.catalog-impl=org.apache.iceberg.gcp.bigquery.BigQueryMetastoreCatalog,\
+    spark.sql.catalog.${CATALOG_NAME}.gcp_project=${PROJECT_ID},\
+    spark.sql.catalog.${CATALOG_NAME}.gcp_location=${LOCATION},\
+    spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_DIRECTORY}"
+
+# Query in Bigquery and no insert possible
+select * from `trim-strength-477307-h0.iceberg_custom_catalog_namespace15.person1`;
+select * from `trim-strength-477307-h0.iceberg_custom_catalog_namespace15.person2`;
+
+-----------
+
+Even though your service account may have BigQuery Admin or Storage Admin,
+it needs one specific permission to "bill" its API requests to your project.
+This is especially true for the BigLake REST Catalog because it makes calls to a shared Google API endpoint.
+
+gcloud projects add-iam-policy-binding trim-strength-477307-h0 \
+    --member="serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com" \
+    --role="roles/serviceusage.serviceUsageConsumer"
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_migrate_from_custom_catalog.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+LOCATION="us-central1"
+RUNTIME_VERSION="2.2"
+REST_CATALOG_NAME="learnbiglakeiceberg15"
+CUST_CATALOG_NAME="learnbiglakeiceberg15"
+CUST_WAREHOUSE_DIRECTORY="gs://learnbiglakeiceberg15/warehouse"
+REST_WAREHOUSE_DIRECTORY="gs://learnbiglakeiceberg15/warehouse"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+#NOTE: we should connect to both the custom catalog and rest catalog inorder to do the registration in rest catalog
+# Define the REST Catalog (Target)
+spark.sql.catalog.${REST_CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${REST_CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.warehouse=${WAREHOUSE_DIRECTORY},\
+spark.sql.catalog.${REST_CATALOG_NAME}.auth.type=google,\
+
+# Define the Custom Catalog (Source - this is how you see the existing data)
+spark.sql.catalog.${CUST_CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CUST_CATALOG_NAME}.catalog-impl=org.apache.iceberg.gcp.bigquery.BigQueryMetastoreCatalog,\
+spark.sql.catalog.${CUST_CATALOG_NAME}.gcp_project=${PROJECT_ID},\
+spark.sql.catalog.${CUST_CATALOG_NAME}.gcp_location=${REGION},\
+spark.sql.catalog.${CUST_CATALOG_NAME}.warehouse=${WAREHOUSE_DIRECTORY}
 
 
+# Submit the Spark job
+============
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.defaultCatalog=${REST_CATALOG_NAME},\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CUST_CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CUST_CATALOG_NAME}.catalog-impl=org.apache.iceberg.gcp.bigquery.BigQueryMetastoreCatalog,\
+spark.sql.catalog.${CUST_CATALOG_NAME}.gcp_project=${PROJECT_ID},\
+spark.sql.catalog.${CUST_CATALOG_NAME}.gcp_location=${LOCATION},\
+spark.sql.catalog.${CUST_CATALOG_NAME}.warehouse=${CUST_WAREHOUSE_DIRECTORY},\
+spark.sql.catalog.${REST_CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${REST_CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.warehouse=${REST_WAREHOUSE_DIRECTORY},\
+spark.sql.catalog.${REST_CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${REST_CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${REST_CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${REST_CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+The Problem is when you try to use a warehouse bucket in iceber rest catalog that is precreated with a warehouse bucket upfront.
+When you created the BigLake REST instance learnbiglakeiceberg10, you associated it with the bucket gs://learnbiglakeiceberg10.
+BigLake REST enforces a security and organizational boundary: it will refuse to register any table whose metadata lives in a different bucket
+or even a different root path than the one defined in the catalog warehouse setting.
+Since your "Custom catalog" tables are in gs://learnbiglakeiceberg15, the REST catalog in gs://learnbiglakeiceberg10 considers them "out of bounds."
+
+
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${REST_CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${REST_CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.warehouse=${REST_WAREHOUSE_DIRECTORY},\
+spark.sql.catalog.${REST_CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${REST_CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${REST_CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${REST_CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+===========
+
+
+#############################################################################
+ICEBERG REST CATALOG - CATALOG LEVEL PERMISSION GRANT
+#############################################################################
+There is terraform module for rest catalog iam which grants members either biglake viewer or biglake editor at rest catalog level
+
+When using gcloud beta command First step is to extract the existing policy in for of json at catalog level.
+Then add extra iam member in the same json file and then again fire gcloud command to update policy.
+
+The obersation is if a service account is granted biglake viewer to the same catalog the SA can only view the table do select operation only.
+But if granted biglake editor role at catalog level then the SA can view and edit at the same catalog level.
+Note the biglake viewer and editor roles when granted at the project level
+then the SA can have ability to view and edit all catalogs provided SA has access at gcs bucket level also.
+
+---------------------------------------------------------------------------------------------------------
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg11 \
+    --project=trim-strength-477307-h0 \
+    --format=json > policy.json
+----
+policy.json:
+
+{
+  "etag": "ACAB",
+  "bindings": [
+    {
+      "members": [
+        "serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.viewer"
+    }
+  ]
+}
+
+----
+gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg11 policy.json --project=trim-strength-477307-h0
+
+--------------------------------------------------------------------------------------------------
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_verify_catalog_level_view_permission.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg11"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+WAREHOUSE_PATH="gs://learnbiglakeiceberg11"
+SERVICE_ACCOUNT="deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+
+# Submit the Spark job
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.defaultCatalog=${CATALOG_NAME},\
+spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_PATH},\
+spark.sql.catalog.${CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.catalog.${CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+
+--------------------------------------------------------------------------------------------
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_verify_catalog_level_view_permission2.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg18"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+WAREHOUSE_PATH="gs://learnbiglakeiceberg18"
+SERVICE_ACCOUNT="deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+
+# Submit the Spark job
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.defaultCatalog=${CATALOG_NAME},\
+spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_PATH},\
+spark.sql.catalog.${CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.catalog.${CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+---------------------------------------------------------------------------------------------------------
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg18 \
+    --project=trim-strength-477307-h0 \
+    --format=json > policy.json
+----
+policy.json:
+
+{
+  "etag": "ACAB",
+  "bindings": [
+    {
+      "members": [
+        "serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.viewer"
+    }
+  ]
+}
+
+----
+gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg18 policy.json --project=trim-strength-477307-h0
+
+--------------------------------------------------------------------------------------------------
+
+##################################################################################################
+ICEBERG REST CATALOG (cred vending mode) - ATTEMPT TO REGISTER PRE EXISTING BIG QUERY MANAGED ICEBERG TABLE (WORKS)
+##################################################################################################
+create bucket: gs://learnbiglakeiceberg20
+create connection resource object: learnbiglakeiceberg20_bq_connection
+(Service account id created for connection: bqcx-90486491937-0b93@gcp-sa-bigquery-condel.iam.gserviceaccount.com)
+Then grant this SA storage object user role.
+
+DROP TABLE `trim-strength-477307-h0.customer.customer_details_bq_managed`;
+
+CREATE TABLE `trim-strength-477307-h0.customer.customer_details_bq_managed`(
+id INT64,name STRING,age INT64
+)
+WITH CONNECTION `trim-strength-477307-h0.us-central1.learnbiglakeiceberg20_bq_connection`
+OPTIONS (
+file_format = 'PARQUET',
+table_format = 'ICEBERG',
+storage_uri = 'gs://learnbiglakeiceberg20/iceberg_rest_catalog_namespace20/customer_details_bq_managed');
+
+INSERT INTO `trim-strength-477307-h0.customer.customer_details_bq_managed`(id, name, age) VALUES (100, 'Tom', 20),(200, 'Rom', 21),(300, 'Som', 22);
+
+select * from `trim-strength-477307-h0.customer.customer_details_bq_managed`;
+
+EXPORT TABLE METADATA FROM `trim-strength-477307-h0.customer.customer_details_bq_managed`;
+
+Now create rest catalog with same gcs bucket.
+catalog id: learnbiglakeiceberg20
+catalog delegate service account: blirc-90486491937-v5m1@gcp-sa-biglakerestcatalog.iam.gserviceaccount.com
+given storage object user on the same bucket to this SA
+
+Now we need to register this BQ managed table in our rest catalog
+
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_migrate_from_bq_managed.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+LOCATION="us-central1"
+RUNTIME_VERSION="2.3"
+REST_CATALOG_NAME="learnbiglakeiceberg20"
+REST_WAREHOUSE_DIRECTORY="gs://learnbiglakeiceberg20"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${REST_CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${REST_CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.warehouse=${REST_WAREHOUSE_DIRECTORY},\
+spark.sql.catalog.${REST_CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${REST_CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${REST_CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${REST_CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
+spark.sql.catalog.${REST_CATALOG_NAME}.rest-metrics-reporting-enabled=false"
