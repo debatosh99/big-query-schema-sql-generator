@@ -994,3 +994,37 @@ spark.sql.catalog.${REST_CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.aut
 spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
 spark.sql.catalog.${REST_CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
 spark.sql.catalog.${REST_CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+
+#######################################################################################################################
+ICEBERG REST CATALOG - read from parquet file and write to iceberg table (WORKS)
+#######################################################################################################################
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_read_parquet_and_write_table.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+LOCATION="us-central1"
+RUNTIME_VERSION="2.3"
+REST_CATALOG_NAME="learnbiglakeiceberg20"
+REST_WAREHOUSE_DIRECTORY="gs://learnbiglakeiceberg20"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${REST_CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${REST_CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${REST_CATALOG_NAME}.warehouse=${REST_WAREHOUSE_DIRECTORY},\
+spark.sql.catalog.${REST_CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${REST_CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${REST_CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${REST_CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
+spark.sql.catalog.${REST_CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
