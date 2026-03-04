@@ -1028,3 +1028,187 @@ spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExte
 spark.sql.catalog.${REST_CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
 spark.sql.catalog.${REST_CATALOG_NAME}.rest-metrics-reporting-enabled=false"
 
+####################################################################################################
+ICEBERG REST CATALOG - using pyiceberg end user credential running in cloud shell editor (WORKS)
+####################################################################################################
+principal nitipradhan17@gmail.com had biglake admin and editor role assigned
+
+PYSPARK_FILE="pyiceberg_end_user_cred_works.py"
+PYSPARK_FILE="pyiceberg_end_user_cred_with_sa_works.py"
+
+In cloud shell editor:
+pip install "pyiceberg[gcp,pyarrow]"
+pip install pandas
+python pyiceberg_end_user_cred_works.py
+
+
+Now if you want to use service account impersonation and do the same then:
+---
+1) Make sure the primary principal nitipradhan17@gmail.com has service account token creator role on the target SA
+gcloud config unset auth/impersonate_service_account
+gcloud auth login
+gcloud iam service-accounts add-iam-policy-binding \
+    "deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com" \
+    --member="user:nitipradhan17@gmail.com" \
+    --role="roles/iam.serviceAccountTokenCreator"
+
+gcloud config unset auth/impersonate_service_account
+gcloud auth login
+gcloud iam service-accounts add-iam-policy-binding \
+    "deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com" \
+    --member="user:nitipradhan17@gmail.com" \
+    --role="roles/iam.serviceAccountTokenCreator"
+
+2) download the current catalog level policy.json file and edit to include the target SA with either viewer or editor role
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg12 \
+    --project=trim-strength-477307-h0 \
+    --format=json > policy_enduser.json
+
+gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg12 policy_enduser.json --project=trim-strength-477307-h0
+
+policy_enduser.json:
+
+{
+  "etag": "ACAB",
+  "bindings": [
+    {
+      "members": [
+        "serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.viewer"
+    }
+  ]
+}
+
+3) then impersonate to the target SA
+gcloud config set auth/impersonate_service_account deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+
+4) Then generate application default credentials - adc in the same python venv for the target SA
+
+cd F:\projects\ai-agent-langraph\agentai\Scripts\activate.exe
+(agentai) gcloud auth application-default login
+cd F:\projects\ai-agent-langraph\biglake_metastore
+python pyiceberg_end_user_cred_works.py
+
+gcloud auth application-default login --impersonate-service-account deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com
+gcloud auth application-default login --impersonate-service-account deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+
+5) Then generate the short lived access token for the target SA, note that the auto refresh token in the python
+   google auth library did not work in case of service account so had to manually print access token and pass in the code
+
+(agentai) gcloud auth application-default print-access-token
+(agentai) gcloud auth application-default print-access-token
+(agentai) cd F:\projects\ai-agent-langraph\biglake_metastore
+(agentai) python pyiceberg_end_user_cred_works.py
+
+---
+
+####################################################################################################
+ICEBERG REST CATALOG - using pyiceberg end user credential running in local machine cmd (WORKS)
+####################################################################################################
+principal nitipradhan17@gmail.com had biglake admin and editor role assigned
+
+PYSPARK_FILE="pyiceberg_end_user_cred_works.py"
+
+In local cmd:
+
+cd F:\projects\ai-agent-langraph\agentai\Scripts\activate.exe
+(agentai) pip install "pyiceberg[gcp,pyarrow]"
+(agentai) pip install pandas
+(agentai) gcloud auth application-default login
+(agentai) cd F:\projects\ai-agent-langraph\biglake_metastore
+(agentai) python pyiceberg_end_user_cred_works.py
+
+Explanation:
+-------------------------
+The python google.auth library helps generate this google oauth2 access token same as "Bearer <token>"
+In the gcp editor the credentials are auto discovered as the ADC- application default credentials, is already setup when
+you login to gcp editor. In local machine we need to first "gcloud auth application-default login" so that the ADC is
+populated and cached in application_default_credentials.json, and from there on python code should automatically
+pick up the credentials when we use google.auth.default()
+
+import google.auth
+credentials, project_id = google.auth.default()
+auth_token = credentials.token
+------------------------
+
+####################################################################################################
+ICEBERG REST CATALOG - using pyiceberg credential vending mode running in cloud shell editor (WORKS)
+####################################################################################################
+principal nitipradhan17@gmail.com
+
+PYSPARK_FILE="pyiceberg_cred_vend_mode_works.py"
+In cloud shell editor:
+pip install "pyiceberg[gcp,pyarrow]"
+pip install pandas
+python pyiceberg_cred_vend_mode_works.py
+
+
+####################################################################################################
+ICEBERG REST CATALOG - using pyiceberg credential vending mode running in local machine cmd (WORKS)
+####################################################################################################
+principal nitipradhan17@gmail.com had biglake admin and editor role assigned
+
+PYSPARK_FILE="pyiceberg_cred_vend_mode_works.py"
+
+In local cmd:
+
+cd F:\projects\ai-agent-langraph\agentai\Scripts\activate.exe
+(agentai) pip install "pyiceberg[gcp,pyarrow]"
+(agentai) pip install pandas
+(agentai) gcloud auth application-default login
+(agentai) cd F:\projects\ai-agent-langraph\biglake_metastore
+(agentai) python pyiceberg_cred_vend_mode_works.py
+
+Now if you want to use service account impersonation and do the same then:
+---
+1) Make sure the primary principal nitipradhan17@gmail.com has service account token creator role on the target SA
+gcloud config unset auth/impersonate_service_account
+gcloud auth login
+gcloud iam service-accounts add-iam-policy-binding \
+    "deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com" \
+    --member="user:nitipradhan17@gmail.com" \
+    --role="roles/iam.serviceAccountTokenCreator"
+
+2) download the current catalog level policy.json file and edit to include the target SA with either viewer or editor role
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg20 \
+    --project=trim-strength-477307-h0 \
+    --format=json > policy_cred_mode.json
+
+gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg12 policy_enduser.json --project=trim-strength-477307-h0
+
+policy_cred_mode.json:
+
+{
+  "etag": "ACAB",
+  "bindings": [
+    {
+      "members": [
+        "serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.viewer"
+    }
+  ]
+}
+
+3) then impersonate to the target SA
+gcloud config set auth/impersonate_service_account deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com
+
+4) Then generate application default credentials - adc in the same python venv for the target SA
+
+cd F:\projects\ai-agent-langraph\agentai\Scripts\activate.exe
+(agentai) gcloud auth application-default login
+cd F:\projects\ai-agent-langraph\biglake_metastore
+python pyiceberg_cred_vend_mode_with_sa_works.py
+
+gcloud auth application-default login --impersonate-service-account deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com
+
+5) Then generate the short lived access token for the target SA, note that the auto refresh token in the python
+   google auth library did not work in case of service account so had to manually print access token and pass in the code
+
+(agentai) gcloud auth application-default print-access-token (use this token in the code)
+(agentai) cd F:\projects\ai-agent-langraph\biglake_metastore
+(agentai) python pyiceberg_cred_vend_mode_with_sa_works.py
+
+---
+####################################################################################################
