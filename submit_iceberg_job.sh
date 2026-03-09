@@ -1498,3 +1498,161 @@ spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
 |  1|John| 30|
 |  1|John| 30|
 +---+----+---+
+
+#######################################################################################################
+ICEBERG REST CATALOG - DISASTER RECOVERY
+#######################################################################################################
+> First describe and verify the blms replicas:
+gcloud alpha biglake iceberg catalogs describe learnbiglakeiceberg10
+
+catalog-type: CATALOG_TYPE_GCS_BUCKET
+create-time: '2026-02-18T20:38:30.601Z'
+credential-mode: CREDENTIAL_MODE_END_USER
+default-location: gs://learnbiglakeiceberg10
+name: projects/trim-strength-477307-h0/catalogs/learnbiglakeiceberg10
+replicas:
+- region: us-central1
+storage-regions:
+- us-central1
+update-time: '2026-02-18T20:38:30.601Z'
+
+> Do a dry run and verify synchronization complete or not:
+gcloud alpha biglake iceberg catalogs failover learnbiglakeiceberg10 --validate-only --primary-replica us-east1
+
+> Do the actual soft failover (no chance of data loss as it checks the sync of data and metadata is complete and only
+                               the the new commits are made to the new replica in new primary region.
+                               Hence use soft failover for planned DR scenarios):
+gcloud alpha biglake iceberg catalogs failover learnbiglakeiceberg10 --primary-replica us-east1
+
+> Do the actual hard failover (here chances of data loss is there as first the metadata is replicated and sometimes
+                               the data might not have been replicated full but as soon as the switch is made all
+                               commits are transfered to the new primary region, it propritizes availability over consistency data loss.
+                               So for immediate hard failover select a timestamp from the past):
+gcloud alpha biglake iceberg catalogs failover learnbiglakeiceberg10 --primary-replica us-east1 --conditional-failover-replication-time=2026-03-09T18:50:19+5:30
+
+Created dual region bucket (us-central1 and us-east1) : gs://learnbiglakeiceberg21
+Created cred ven mode catalog: learnbiglakeiceberg21
+Gave delegate SA: blirc-90486491937-lzmk@gcp-sa-biglakerestcatalog.iam.gserviceaccount.com role storage object user on the bucket
+Give the SA big lake editor role on the catalog:
+
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg21 \
+    --project=trim-strength-477307-h0 \
+    --format=json > policy_dr.json
+
+{
+  "etag": "ACAB",
+  "bindings": [
+    {
+      "members": [
+        "serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.editor"
+    }
+  ]
+}
+
+gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg21 policy_dr.json --project=trim-strength-477307-h0
+
+
+Now create a table using spark:
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_disaster_recovery.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg21"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+#WAREHOUSE_PATH="bq://projects/trim-strength-477307-h0"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+WAREHOUSE_PATH="bq://projects/trim-strength-477307-h0/locations/us-central1"
+
+
+# Submit the Spark job
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.defaultCatalog=${CATALOG_NAME},\
+spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_PATH},\
+spark.sql.catalog.${CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.catalog.${CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+
+gcloud alpha biglake iceberg catalogs describe learnbiglakeiceberg21
+
+biglake-service-account: blirc-90486491937-lzmk@gcp-sa-biglakerestcatalog.iam.gserviceaccount.com
+biglake-service-account-id: '104846451813646436628'
+catalog-type: CATALOG_TYPE_GCS_BUCKET
+create-time: '2026-03-09T13:26:14.586Z'
+credential-mode: CREDENTIAL_MODE_VENDED_CREDENTIALS
+default-location: gs://learnbiglakeiceberg21
+name: projects/trim-strength-477307-h0/catalogs/learnbiglakeiceberg21
+replicas:
+- region: us-central1
+  state: STATE_PRIMARY
+- region: us-east1
+  state: STATE_SECONDARY
+storage-regions:
+- nam4
+update-time: '2026-03-09T13:26:42.738Z'
+
+
+gcloud alpha biglake iceberg catalogs failover learnbiglakeiceberg21 --validate-only --primary-replica us-east1
+
+Updated [projects/trim-strength-477307-h0/catalogs/learnbiglakeiceberg21] Failover to [us-east1] validated.
+replicationTime: '2026-03-09T13:50:14.607746Z'
+
+
+
+gcloud alpha biglake iceberg catalogs failover learnbiglakeiceberg21 --primary-replica us-east1
+
+Updated [projects/trim-strength-477307-h0/catalogs/learnbiglakeiceberg21] Failover to [us-east1] initiated.
+replicationTime: '2026-03-09T13:52:14.607746Z'
+
+
+> Now try to run the job from new primary which is us-east1 (WORKS)
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_disaster_recovery_failover.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-east1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg21"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+#WAREHOUSE_PATH="bq://projects/trim-strength-477307-h0"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+WAREHOUSE_PATH="bq://projects/trim-strength-477307-h0/locations/us-central1"
+
+
+# Submit the Spark job
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.defaultCatalog=${CATALOG_NAME},\
+spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_PATH},\
+spark.sql.catalog.${CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.catalog.${CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+#########################################################################################################
