@@ -1212,3 +1212,289 @@ gcloud auth application-default login --impersonate-service-account deb2-592@tri
 
 ---
 ####################################################################################################
+
+####################################################################################################
+ICEBERG CUSTOM & REST CATALOG - using big query connection override for fine grained access control (WORKS)
+####################################################################################################
+Note: This catalog: learnbiglakeiceberg10 was precreated using rest catalog creation on console.
+      Now I am using same rest catalog but using custom iceberg catalog approach to create a spark managed table
+      with BQ connection override option. Using custom iceberg catalog approach as then the table would be
+      easily visible on the BQ studio as a table and I can then attempt to add policy tags to the schema for column level
+      access control and also use row level access control.
+
+1) Step 1: create a table with bq connection override:
+
+> created bq connection: learnbiglakeiceberg10_bq_connection
+> gave the delegate service account: bqcx-90486491937-20rg@gcp-sa-bigquery-condel.iam.gserviceaccount.com,
+storage object user role on the bucket: gs://learnbiglakeiceberg10
+> catalog name: learnbiglakeiceberg10 (is created with end user credentials pointing to same bucket)
+> using SA: deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+> giving SA: deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com, big lake editor on the same catalog
+
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg10 \
+    --project=trim-strength-477307-h0 \
+    --format=json > policy_bq_override.json
+
+{
+  "etag": "ACAB",
+  "bindings": [
+    {
+      "members": [
+        "serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.editor"
+    }
+  ]
+}
+
+gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg10 policy_bq_override.json --project=trim-strength-477307-h0
+
+> submit the job which contains bq conn override with SA: deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+> gcloud config unset auth/impersonate_service_account
+> bq show --format=prettyjson trim-strength-477307-h0:iceberg_demo > bq_dataset_policy.json
+
+bq_dataset_policy.json
+---
+{
+  "creationTime": "1767764362430",
+    "access": [
+    {
+      "role": "OWNER",
+      "userByEmail": "nitipradhan17@gmail.com"
+    },
+    {
+      "role": "WRITER",
+      "userByEmail": "deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+    }
+  ],
+  "datasetReference": {
+    "datasetId": "iceberg_demo",
+    "projectId": "trim-strength-477307-h0"
+  },
+  "etag": "ucriOhM2ze8hoZiDaaTIyw==",
+  "externalCatalogDatasetOptions": {
+    "defaultStorageLocationUri": "gs://learnbiglakeiceberg1",
+    "parameters": {
+      "location": "gs://learnbiglakeiceberg1",
+      "owner": "spark"
+    }
+  },
+  "id": "trim-strength-477307-h0:iceberg_demo",
+  "kind": "bigquery#dataset",
+  "lastModifiedTime": "1767764362430",
+  "location": "us-central1",
+  "maxTimeTravelHours": "168",
+  "selfLink": "https://bigquery.googleapis.com/bigquery/v2/projects/trim-strength-477307-h0/datasets/iceberg_demo",
+  "type": "DEFAULT"
+}
+---
+
+> bq update --source bq_dataset_policy.json trim-strength-477307-h0:iceberg_demo
+> gave role big query connection user on conn id: learnbiglakeiceberg10_bq_connection given to
+  service account: deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+  (You must grant the roles/bigquery.connectionAdmin role to your service account at the project level.
+  This role includes the specific bigquery.connections.delegate permission)
+> gave role big query connection admin at project level to SA: deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+> table gets created and table details in BQ reveal owner is Spark and using connection resource object
+
+
+
+> In big query policy taxonomy: sensitivity -> policy tag: medium,
+  gave role fine grained reader role to the principal: deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+
+> created a row access policy in BQ studio:
+  CREATE ROW ACCESS POLICY name_filter ON `trim-strength-477307-h0.iceberg_demo.person_bq_override`
+  GRANT TO ('serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com') FILTER USING (name = 'John');
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_custom_catalog_spark_managed_bq_conn_override.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+LOCATION="us-central1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg10"
+WAREHOUSE_DIRECTORY="gs://learnbiglakeiceberg10"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --version=2.2 \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+    spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+    spark.sql.catalog.${CATALOG_NAME}.catalog-impl=org.apache.iceberg.gcp.bigquery.BigQueryMetastoreCatalog,\
+    spark.sql.catalog.${CATALOG_NAME}.gcp_project=${PROJECT_ID},\
+    spark.sql.catalog.${CATALOG_NAME}.gcp_location=${LOCATION},\
+    spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_DIRECTORY}"
+
+# Query in Bigquery and no insert possible
+select * from `trim-strength-477307-h0.iceberg_custom_catalog_namespace.person`;
+
+> Now running another job
+  to use same catalog and try to read the table created using Big Query api (spark.read.format("bigquery").load(<sql>))
+
+> Spark-BigQuery Connector uses the BigQuery Storage Read API to read large datasets efficiently.
+  This API requires a specific session-level permission that is not included in standard data viewer roles
+
+> gcloud projects add-iam-policy-binding trim-strength-477307-h0 \
+    --member="serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com" \
+    --role="roles/bigquery.readSessionUser"
+> gcloud projects add-iam-policy-binding trim-strength-477307-h0 \
+    --member="serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com" \
+    --role="roles/bigquery.jobUser"
+> gcloud projects add-iam-policy-binding trim-strength-477307-h0 \
+    --member="serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com" \
+    --role="roles/bigquery.dataViewer"
+
+> The BigQuery Storage Read API cannot directly read BigLake Iceberg tables when they are referenced as "tables"
+  via the standard Spark-BigQuery connector. The Storage API currently sees these as "non-table entities" (metadata-only pointers)
+  rather than native BigQuery storage. To read a BigLake Iceberg table using spark.read.format("bigquery"),
+  you must tell the connector to treat the table as a queryable entity (like a view) which forces the connector to use a
+  temporary table or a specific execution path that the Storage API can handle.
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_custom_catalog_spark_managed_read_native_bq_api_bq_conn_override.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+LOCATION="us-central1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg10"
+WAREHOUSE_DIRECTORY="gs://learnbiglakeiceberg10"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --version=2.2 \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+    spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+    spark.sql.catalog.${CATALOG_NAME}.catalog-impl=org.apache.iceberg.gcp.bigquery.BigQueryMetastoreCatalog,\
+    spark.sql.catalog.${CATALOG_NAME}.gcp_project=${PROJECT_ID},\
+    spark.sql.catalog.${CATALOG_NAME}.gcp_location=${LOCATION},\
+    spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_DIRECTORY}"
+
+
+> Also here using the above job run as deb1 SA, using native iceberg spark api able to see all the records but in the same
+  job using big query storage read api (spark.read.format("bigquery")) only show records with name=John.
+
+  with spark iceberg api:
+  +---+----+---+
+| id|name|age|
++---+----+---+
+|  1|John| 30|
+|  1|John| 30|
+|  2|Jane| 25|
+|  3| Bob| 35|
+|  2|Jane| 25|
+|  3| Bob| 35|
++---+----+---+
+
+  with bq connector api:
++---+----+---+
+| id|name|age|
++---+----+---+
+|  1|John| 30|
+|  1|John| 30|
++---+----+---+
+
+> gcloud config set auth/impersonate_service_account deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+bq query --use_legacy_sql=false 'SELECT * FROM `trim-strength-477307-h0.iceberg_demo.person_bq_override` LIMIT 10'
+This works fine and with deb1 SA only able to see records with name=John
+
+-----------------------------------------------------------------------------
+
+Now submitting job using same rest catalog with end user credential precreated i.e learnbiglakeiceberg10 but this time using rest catalog uri to
+submit the job and create another table with big query connection override
+This uses BQ CATALOG FEDERATION (WORKS) - able to see the table in BQ studio console
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_bq_conn_override.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg10"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+#WAREHOUSE_PATH="bq://projects/trim-strength-477307-h0"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+WAREHOUSE_PATH="bq://projects/trim-strength-477307-h0/locations/us-central1"
+
+
+# Submit the Spark job
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.defaultCatalog=${CATALOG_NAME},\
+spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_PATH},\
+spark.sql.catalog.${CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+> Now adding row access policy on this table
+CREATE ROW ACCESS POLICY name_filter ON `trim-strength-477307-h0.iceberg_demo.person_bq_override_rest`
+  GRANT TO ('serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com') FILTER USING (name = 'John');
+
+> Now again submitting rest cat end user BQ catalog federation job querying table created with BQ connection override
+  and also now has row level access control
+
+(WORKS)
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_read_native_bq_api_bq_conn_override.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg10"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+#WAREHOUSE_PATH="bq://projects/trim-strength-477307-h0"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+WAREHOUSE_PATH="bq://projects/trim-strength-477307-h0/locations/us-central1"
+
+
+# Submit the Spark job
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+spark.sql.defaultCatalog=${CATALOG_NAME},\
+spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_PATH},\
+spark.sql.catalog.${CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+  with spark iceberg api:
+  +---+----+---+
+| id|name|age|
++---+----+---+
+|  1|John| 30|
+|  1|John| 30|
+|  2|Jane| 25|
+|  3| Bob| 35|
+|  2|Jane| 25|
+|  3| Bob| 35|
++---+----+---+
+
+  with bq connector api:
++---+----+---+
+| id|name|age|
++---+----+---+
+|  1|John| 30|
+|  1|John| 30|
++---+----+---+
