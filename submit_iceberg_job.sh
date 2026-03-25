@@ -1787,3 +1787,302 @@ gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg20 \
 
 gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg20 policy_pyiceberg_pyspark.json --project=trim-strength-477307-h0
 
+################################################################################################
+ICEBERG REST CATALOG - PYICEBERG with catalog federation (WORKS)
+################################################################################################
+pyiceberg_cred_vend_mode_cat_fed_testing.py
+
+activate venv
+gcloud auth application-default login (make sure the sa impersonation is unset)
+python pyiceberg_cred_vend_mode_cat_fed_works.py
+worked and the dataset is created and the table is also visible inside the dataset
+
+activate venv
+gcloud auth application-default login (make sure the sa impersonation is unset)
+python pyiceberg_cred_vend_mode_cat_fed_ns_exists_works.py
+worked and the dataset which was precreated normally using spark custom catalog was used and the table was created also visible inside the dataset
+
+##############################################################################################
+GCLOUD ways to get set iam policy at table level namespace level
+##############################################################################################
+
+Note: my observation is that when the table and namespace is used with BQ catalog federation then
+  that namespace and table, you will not be able to see list that namespace or table using gcloud alpha
+  and you will unable to manage iam permission using gcloud or terraform.
+-------------------------------
+gcloud alpha biglake iceberg namespaces get-iam-policy my_pyiceberg_namespace \
+    --catalog=learnbiglakeiceberg12 \
+    --project=trim-strength-477307-h0
+
+
+gcloud alpha biglake iceberg namespaces list \
+    --catalog=learnbiglakeiceberg12 \
+    --project=trim-strength-477307-h0
+
+NAME: projects/trim-strength-477307-h0/catalogs/learnbiglakeiceberg12/namespaces/my_pyiceberg_namespace
+NAMESPACE-ID: my_pyiceberg_namespace
+
+gcloud alpha biglake iceberg tables list \
+    --catalog=learnbiglakeiceberg12 \
+    --namespace=my_pyiceberg_namespace \
+    --project=trim-strength-477307-h0
+
+NAME: my_pyiceberg_table
+NAMESPACE: ['my_pyiceberg_namespace']
+
+NAME: my_pyiceberg_table2
+NAMESPACE: ['my_pyiceberg_namespace']
+
+
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg12 \
+    --project=trim-strength-477307-h0 \
+    --format=json > policy_learnbiglakeiceberg12.json
+
+
+bindings:
+- members:
+  - serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com
+  role: roles/biglake.viewer
+etag: BwZMMGwgtbE=
+version: 1
+
+gcloud alpha biglake iceberg tables get-iam-policy my_pyiceberg_table2 \
+    --catalog=learnbiglakeiceberg12 \
+    --namespace=my_pyiceberg_namespace \
+    --project=trim-strength-477307-h0 \
+	--format=json > my_pyiceberg_table2.json
+
+
+my_pyiceberg_table2.json
+
+{
+  "bindings": [
+    {
+      "members": [
+        "serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.viewer"
+    }
+  ],
+  "etag": "BwZN1mBU5Kw=",
+  "version": 1
+}
+
+
+
+gcloud alpha biglake iceberg tables set-iam-policy my_pyiceberg_table2 \
+    --catalog=learnbiglakeiceberg12 \
+    --namespace=my_pyiceberg_namespace \
+	--project=trim-strength-477307-h0 \
+	my_pyiceberg_table2.json
+
+gcloud alpha biglake iceberg tables get-iam-policy my_pyiceberg_table2 \
+    --catalog=learnbiglakeiceberg12 \
+    --namespace=my_pyiceberg_namespace \
+    --project=trim-strength-477307-h0
+
+
+So now in the whole catalog learnbiglakeiceberg12 ,
+deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com is the viewer
+and on table my_pyiceberg_namespace.my_pyiceberg_table2 deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com is the viewer
+
+
+# Below is the BQ catalog federation created namespace and table
+---
+gcloud alpha biglake iceberg namespaces list \
+    --catalog=learnbiglakeiceberg21 \
+    --project=trim-strength-477307-h0
+
+Listed 0 items.
+
+gcloud alpha biglake iceberg tables get-iam-policy person \
+    --catalog=learnbiglakeiceberg21 \
+    --namespace=iceberg_ds_ns \
+    --project=trim-strength-477307-h0
+
+ERROR: (gcloud.alpha.biglake.iceberg.tables.get-iam-policy) FAILED_PRECONDITION: Namespace iceberg_ds_ns does not exist.
+---
+
+----------------------------
+##############################################################################################
+GCLOUD & terraform BUG when namespace and table is federated in Big Query - unable to grant table iam or namespace iam
+##############################################################################################
+Note:
+Probable bug in gcloud list namespaces and tables inside catalog when ever the table is visible in Big Query and same bug also same using terraform module,
+when ever the table is by default federated using custom iceberg catalog and when intentional federation using rest iceberg catalog
+So proved with custom iceberg catalog and need to check with rest iceberg catalog as well.
+
+Note: In BLMS spark managed using custom iceberg catalog when using BigQueryMetastoreCatalog, the datsets and namespaces are one and the same,
+      even if you are using a particular catalog learnbiglakeiceberg15 in spark and you do spark.sql("SHOW NAMESPACES IN learnbiglakeiceberg15;").show()
+	  you will see all the big query datasets listed, then you need to use spark.sql("USE learnbiglakeiceberg15.iceberg_custom_catalog_namespace15;")
+	  But in iceberg rest catalog it is different and you will only see namespaces inside the specified catalog.
+
+Note: But even in case of spark managed custom iceberg catalog, all the below gcloud cmd to list namespaces and tables fails, as its not able to find
+      namespace and tables inside catalog when federation of catalog by default happed with custom iceberg catalog and with rest catalog as well
+	  even thought the namespace was already present and table as well and spark is able to use it.
+	  need to check how pyiceberg behaves after listing namespaces inside catalog and then using it.
+
+Here learnbiglakeiceberg15 catalog is enduser cred catalog
+Created with custom iceberg catalog
+
+gcloud alpha biglake iceberg namespaces list \
+    --catalog=learnbiglakeiceberg15 \
+    --project=trim-strength-477307-h0
+
+Listed 0 items.
+
+gcloud alpha biglake iceberg tables list \
+    --catalog=learnbiglakeiceberg15 \
+    --namespace=iceberg_custom_catalog_namespace15 \
+    --project=trim-strength-477307-h0
+
+ERROR: (gcloud.alpha.biglake.iceberg.tables.list) HTTPError 404: Namespace does not exist: iceberg_custom_catalog_namespace15.
+This command is authenticated as nitipradhan17@gmail.com which is the active account specified by the [core/account] property
+
+############################################################################################
+ICEBERG REST CATALOG WITH CATALOG FEDERATION (WORKS) but gcloud IAM at table level or namespace level fails (BUG)
+############################################################################################
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg18 \
+    --project=trim-strength-477307-h0 \
+    --format=json > learnbiglakeiceberg18_policy.json
+
+{
+  "etag": "ACAB",
+  "bindings": [
+    {
+      "members": [
+         "serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com",
+        "serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.editor"
+    }
+  ]
+}
+
+gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg18 learnbiglakeiceberg18_policy.json --project=trim-strength-477307-h0
+
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_cat_fed_iam_works.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg18"
+WAREHOUSE_PATH="bq://projects/trim-strength-477307-h0/locations/us-central1"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+
+
+# Submit the Spark job
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+    spark.driver.cores=1,\
+    spark.driver.memory=1g,\
+    spark.executor.cores=1,\
+    spark.executor.memory=1g,\
+    spark.executor.instances=1,\
+spark.sql.defaultCatalog=${CATALOG_NAME},\
+spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_PATH},\
+spark.sql.catalog.${CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.catalog.${CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+# Query in Bigquery
+select * from `trim-strength-477307-h0.iceberg_demo_now.person_now`;  (WORKS)
+
+select * from `trim-strength-477307-h0.learnbiglakeiceberg18.iceberg_demo_now.person_now`; (P.C.N.T) - (DOES NOT WORK since already catalog federation done)
+
+
+gcloud alpha biglake iceberg namespaces list \
+    --catalog=learnbiglakeiceberg18 \
+    --project=trim-strength-477307-h0
+
+NAME: projects/trim-strength-477307-h0/catalogs/learnbiglakeiceberg18/namespaces/iceberg_demo2
+NAMESPACE-ID: iceberg_demo2
+
+Note: It shows only that namespace where catalog federation has not yet been successfully done
+
+gcloud alpha biglake iceberg tables list \
+    --catalog=learnbiglakeiceberg18 \
+    --namespace=iceberg_demo_now \
+    --project=trim-strength-477307-h0
+
+ERROR: (gcloud.alpha.biglake.iceberg.tables.list) HTTPError 404: Namespace does not exist: iceberg_demo_now. This command is authenticated as nitipradhan17@gmail.com which is the active account specified by the [core/account] property
+
+################################################################################################
+ICEBERG REST CATALOG WITHOUT CATALOG FEDERATION (WORKS) also gcloud IAM at table level or namespace level works (WORKS)
+############################################################################################
+
+PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_no_cat_fed_iam_works.py"
+PROJECT_ID="trim-strength-477307-h0"
+REGION="us-central1"
+RUNTIME_VERSION="2.3"
+CATALOG_NAME="learnbiglakeiceberg18"
+WAREHOUSE_PATH="gs://learnbiglakeiceberg18"
+STAGE_BUCKET_PATH="gs://dataproc_job_staging_bucket"
+SERVICE_ACCOUNT="deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+
+
+
+# Submit the Spark job
+gcloud dataproc batches submit pyspark ${PYSPARK_FILE} \
+    --project=${PROJECT_ID} \
+    --region=${REGION} \
+    --service-account=${SERVICE_ACCOUNT} \
+    --version=${RUNTIME_VERSION} \
+    --deps-bucket=${STAGE_BUCKET_PATH} \
+    --properties="\
+    spark.driver.cores=1,\
+    spark.driver.memory=1g,\
+    spark.executor.cores=1,\
+    spark.executor.memory=1g,\
+    spark.executor.instances=1,\
+spark.sql.defaultCatalog=${CATALOG_NAME},\
+spark.sql.catalog.${CATALOG_NAME}=org.apache.iceberg.spark.SparkCatalog,\
+spark.sql.catalog.${CATALOG_NAME}.type=rest,\
+spark.sql.catalog.${CATALOG_NAME}.uri=https://biglake.googleapis.com/iceberg/v1/restcatalog,\
+spark.sql.catalog.${CATALOG_NAME}.warehouse=${WAREHOUSE_PATH},\
+spark.sql.catalog.${CATALOG_NAME}.io-impl=org.apache.iceberg.gcp.gcs.GCSFileIO,\
+spark.sql.catalog.${CATALOG_NAME}.header.x-goog-user-project=${PROJECT_ID},\
+spark.sql.catalog.${CATALOG_NAME}.rest.auth.type=org.apache.iceberg.gcp.auth.GoogleAuthManager,\
+spark.sql.catalog.${CATALOG_NAME}.header.X-Iceberg-Access-Delegation=vended-credentials,\
+spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,\
+spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
+
+# Query in Bigquery
+select * from `trim-strength-477307-h0.iceberg_demo_now_nocat.person_now_nocat`;  (DOES NOT WORKS AS dataset and table not available in BQ since no cat fed done)
+
+select * from `trim-strength-477307-h0.learnbiglakeiceberg18.iceberg_demo_now_nocat.person_now_nocat`; (P.C.N.T) - (DOES NOT WORK since already catalog federation done)
+
+
+gcloud alpha biglake iceberg namespaces list \
+    --catalog=learnbiglakeiceberg18 \
+    --project=trim-strength-477307-h0
+
+NAME: projects/trim-strength-477307-h0/catalogs/learnbiglakeiceberg18/namespaces/iceberg_demo2
+NAMESPACE-ID: iceberg_demo2
+
+NAME: projects/trim-strength-477307-h0/catalogs/learnbiglakeiceberg18/namespaces/iceberg_demo_now_nocat
+NAMESPACE-ID: iceberg_demo_now_nocat
+
+Note: It shows only those namespace where cat fed is not yet done
+
+gcloud alpha biglake iceberg tables list \
+    --catalog=learnbiglakeiceberg18 \
+    --namespace=iceberg_demo_now_nocat \
+    --project=trim-strength-477307-h0
+
+
+NAME: person_now_nocat
+NAMESPACE: ['iceberg_demo_now_nocat']
