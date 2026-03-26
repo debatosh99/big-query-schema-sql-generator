@@ -2024,6 +2024,25 @@ ERROR: (gcloud.alpha.biglake.iceberg.tables.list) HTTPError 404: Namespace does 
 ICEBERG REST CATALOG WITHOUT CATALOG FEDERATION (WORKS) also gcloud IAM at table level or namespace level works (WORKS)
 ############################################################################################
 
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg18 \
+    --project=trim-strength-477307-h0 \
+    --format=json > learnbiglakeiceberg18_policy.json
+
+{
+  "etag": "ACAB",
+  "bindings": [
+    {
+      "members": [
+         "serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com",
+        "serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.editor"
+    }
+  ]
+}
+
+gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg18 learnbiglakeiceberg18_policy.json --project=trim-strength-477307-h0
+
 PYSPARK_FILE="gs://learnbiglakeicerg-artifacts/iceberg_rest_catalog_spark_managed_no_cat_fed_iam_works.py"
 PROJECT_ID="trim-strength-477307-h0"
 REGION="us-central1"
@@ -2063,8 +2082,12 @@ spark.sql.catalog.${CATALOG_NAME}.rest-metrics-reporting-enabled=false"
 # Query in Bigquery
 select * from `trim-strength-477307-h0.iceberg_demo_now_nocat.person_now_nocat`;  (DOES NOT WORKS AS dataset and table not available in BQ since no cat fed done)
 
-select * from `trim-strength-477307-h0.learnbiglakeiceberg18.iceberg_demo_now_nocat.person_now_nocat`; (P.C.N.T) - (DOES NOT WORK since already catalog federation done)
+select * from `trim-strength-477307-h0.learnbiglakeiceberg18.iceberg_demo_now_nocat.person_now_nocat`; (P.C.N.T) -
+(DOES NOT WORK as nitipradhan17 does not have biglake editor on this catalog, also the error msg is weird does not say permission but instead says catalog not found in US)
+Not found: Dataset trim-strength-477307-h0:learnbiglakeiceberg18.iceberg_demo_now_nocat was not found in location US at [3:1]
 
+gcloud config set auth/impersonate_service_account deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com  (WORKS as this deb1 service account has biglake editor on the catalog)
+bq query --nouse_legacy_sql 'SELECT * FROM `trim-strength-477307-h0.learnbiglakeiceberg18.iceberg_demo_now_nocat.person_now_nocat` LIMIT 10'
 
 gcloud alpha biglake iceberg namespaces list \
     --catalog=learnbiglakeiceberg18 \
@@ -2086,3 +2109,98 @@ gcloud alpha biglake iceberg tables list \
 
 NAME: person_now_nocat
 NAMESPACE: ['iceberg_demo_now_nocat']
+
+---- now try to give table level permission to nitipradhan17 ---
+gcloud alpha biglake iceberg tables get-iam-policy person_now_nocat \
+    --catalog=learnbiglakeiceberg18 \
+    --namespace=iceberg_demo_now_nocat \
+    --project=trim-strength-477307-h0 \
+	--format=json > person_now_nocat.json
+
+
+person_now_nocat.json
+
+{
+  "bindings": [
+    {
+      "members": [
+        "serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com",
+        "serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com",
+      ],
+      "role": "roles/biglake.editor"
+    },
+    {
+      "members": [
+        "user:nitipradhan17@gmail.com"
+      ],
+      "role": "roles/biglake.viewer"
+    }
+  ],
+  "etag": "ACAB",
+  "version": 1
+}
+
+
+
+gcloud alpha biglake iceberg tables set-iam-policy person_now_nocat \
+    --catalog=learnbiglakeiceberg18 \
+    --namespace=iceberg_demo_now_nocat \
+	--project=trim-strength-477307-h0 \
+	person_now_nocat.json
+
+
+# Now able to query even with nitipradhan17 account
+gcloud config unset auth/impersonate_service_account
+bq query --nouse_legacy_sql 'SELECT * FROM `trim-strength-477307-h0.learnbiglakeiceberg18.iceberg_demo_now_nocat.person_now_nocat` LIMIT 10' (WORKS)
+
+WORKS even in BQ studio console:
+SELECT * FROM `trim-strength-477307-h0.learnbiglakeiceberg18.iceberg_demo_now_nocat.person_now_nocat` LIMIT 10
+
+
+So the deb1 and deb2 service account have biglake editor role at the catalog level hence at table level they are both able to query
+
+gcloud alpha biglake iceberg catalogs get-iam-policy learnbiglakeiceberg18 --project=trim-strength-477307-h0
+WARNING: This command is using service account impersonation. All API calls will be executed as [deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com].
+bindings:
+- members:
+  - serviceAccount:deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+  - serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com
+  role: roles/biglake.editor
+etag: BwZN3m3Xllg=
+version: 1
+
+gcloud beta biglake iceberg catalogs get-iam-policy learnbiglakeiceberg18 \
+    --project=trim-strength-477307-h0 \
+    --format=json > learnbiglakeiceberg18_policy.json
+----
+learnbiglakeiceberg18_policy.json:
+
+{
+  "bindings": [
+    {
+      "members": [
+        "serviceAccount:deb2-592@trim-strength-477307-h0.iam.gserviceaccount.com"
+      ],
+      "role": "roles/biglake.editor"
+    }
+  ],
+  "etag": "BwZN3m3Xllg=",
+  "version": 1
+}
+
+
+----
+gcloud beta biglake iceberg catalogs set-iam-policy learnbiglakeiceberg18 learnbiglakeiceberg18_policy.json --project=trim-strength-477307-h0
+
+gcloud config set auth/impersonate_service_account deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com
+Updated property [auth/impersonate_service_account].
+
+bq query --nouse_legacy_sql 'SELECT * FROM `trim-strength-477307-h0.learnbiglakeiceberg18.iceberg_demo_now_nocat.person_now_nocat` LIMIT 10'
+
+WARNING: This command is using service account impersonation. All API calls will be executed as [deb1-591@trim-strength-477307-h0.iam.gserviceaccount.com].
+BigQuery error in query operation: Error processing job 'trim-strength-477307-h0:bqjob_r6ca885ae2b893890_0000019d297cffa8_1': Access Denied: Table trim-
+strength-477307-h0:learnbiglakeiceberg18.iceberg_demo_now_nocat.person_now_nocat: User does not have permission to query table trim-
+strength-477307-h0:learnbiglakeiceberg18.iceberg_demo_now_nocat.person_now_nocat, or perhaps it does not exist.
+
+Note: the permission at the parent level takes precedence and override any permission at the catalog level at the namespace or table level,
+like biglake admin at project level will override everything same project level editor will override at catalog level namespace or table level
